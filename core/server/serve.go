@@ -90,13 +90,17 @@ func Serve() {
 				return
 			}
 
-			firewall.Mutex.Lock()
-			domainData = domains.DomainsData[r.Host]
-			domainData.TotalRequests++
-			domains.DomainsData[r.Host] = domainData
-			firewall.Mutex.Unlock()
-
-			http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently)
+			firewall.Mutex.Lock()                    // Lock to update domain data
+			domainData = domains.DomainsData[r.Host] // Get the existing domain data
+			domainData.TotalRequests++               // Increment the request count
+			domains.DomainsData[r.Host] = domainData // Update the domain data in the map
+			firewall.Mutex.Unlock()                  // Unlock after updating
+			redirpage := `<!DOCTYPE html><html><head><title>Redirecting to HTTPS</title><script>setTimeout(function(){window.location.href="https://` + r.Host + r.URL.Path + r.URL.RawQuery + `"},1e3)</script></head><body><h1>Redirecting to HTTPS</h1><p>Please wait while we securely redirect you...</p></body></html>`
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			fmt.Fprint(w, redirpage)
+			// http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently) // Redirect to HTTPS
 		})
 
 		service.SetKeepAlivesEnabled(true)
