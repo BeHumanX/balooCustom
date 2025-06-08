@@ -79,7 +79,7 @@ func Serve() {
 		http2.ConfigureServer(service, &http2.Server{})
 		http2.ConfigureServer(serviceH, &http2.Server{})
 
-		service.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		commonHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			firewall.Mutex.RLock()
 			domainData, domainFound := domains.DomainsData[r.Host]
 			firewall.Mutex.RUnlock()
@@ -95,16 +95,39 @@ func Serve() {
 			domainData.TotalRequests++               // Increment the request count
 			domains.DomainsData[r.Host] = domainData // Update the domain data in the map
 			firewall.Mutex.Unlock()                  // Unlock after updating
-			redirpage := `<!DOCTYPE html><html><head><title>Redirecting to HTTPS</title><script>setTimeout(function(){window.location.href="https://` + r.Host + r.URL.Path + r.URL.RawQuery + `"},1e3)</script></head><body><h1>Redirecting to HTTPS</h1><p>Please wait while we securely redirect you...</p></body></html>`
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
-			fmt.Fprint(w, redirpage)
+			isHTTPS := r.TLS != nil
+			_, skipSplash := r.URL.Query()["baloo_skip_splash"]
+			if isHTTPS {
+				if skipSplash {
+					// If it's HTTPS and the skip splash flag is present, proceed to Middleware
+					Middleware(w, r)
+				} else {
+					// HTTPS splash page: Shows a loading screen, then reloads with a skip parameter
+					// This ensures the client sees the splash screen, then gets the actual content
+					var targetURL string
+					if r.URL.RawQuery == "" {
+						targetURL = "https://" + r.Host + r.URL.Path + "?baloo_skip_splash=true"
+					} else {
+						targetURL = "https://" + r.Host + r.URL.Path + "?" + r.URL.RawQuery + "&baloo_skip_splash=true"
+					}
+
+					httpsRedirPage := `<!DOCTYPE html><html><head><title>Loading Secure Content...</title><style>body{font-family:'Helvetica Neue',sans-serif;color:#333;margin:0;padding:0}.container{display:flex;align-items:center;justify-content:center;height:100vh;background:#fafafa}.message-box{width:600px;padding:20px;background:#fff;border-radius:5px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.message-box h1{font-size:36px;margin-bottom:20px}.message-box p{font-size:16px;line-height:1.5;margin-bottom:20px}</style><script>setTimeout(function(){window.location.href="` + targetURL + `"},1e3)</script></head><body><div class=container><div class=message-box><h1>Loading Secure Content...</h1><p>Please wait while we establish a secure connection and fetch your content.</p><br><p>brought to you by limitless</p></div></div></body></html>`
+					fmt.Fprint(w, httpsRedirPage)
+				}
+			} else {
+				// HTTP splash page: Redirects to HTTPS
+				httpRedirPage := `<!DOCTYPE html><html><head><title>Redirecting to HTTPS</title><script>setTimeout(function(){window.location.href="https://` + r.Host + r.URL.Path + r.URL.RawQuery + `"},1e3)</script></head><body><h1>Redirecting to HTTPS</h1><p>Please wait while we securely redirect you...</p></body></html>`
+				fmt.Fprint(w, httpRedirPage)
+				// http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently) // Server-side redirect
+			}
 			// http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently) // Redirect to HTTPS
 		})
-
+		service.Handler = commonHandler
 		service.SetKeepAlivesEnabled(true)
-		serviceH.Handler = http.HandlerFunc(Middleware)
+		serviceH.Handler = commonHandler
 
 		go func() {
 			defer pnc.PanicHndl()
