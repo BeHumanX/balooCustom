@@ -95,33 +95,54 @@ func Serve() {
 			domainData.TotalRequests++               // Increment the request count
 			domains.DomainsData[r.Host] = domainData // Update the domain data in the map
 			firewall.Mutex.Unlock()                  // Unlock after updating
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache")
+			isHTMLRequest := strings.Contains(r.Header.Get("Accept"), "text/html") &&
+				!strings.Contains(r.URL.Path, ".js") &&
+				!strings.Contains(r.URL.Path, ".css") &&
+				!strings.Contains(r.URL.Path, ".png") &&
+				!strings.Contains(r.URL.Path, ".jpg") &&
+				!strings.Contains(r.URL.Path, ".jpeg") &&
+				!strings.Contains(r.URL.Path, ".gif") &&
+				!strings.Contains(r.URL.Path, ".svg") &&
+				!strings.Contains(r.URL.Path, ".ico") &&
+				!strings.Contains(r.URL.Path, ".webp") &&
+				!strings.Contains(r.URL.Path, ".json") && // JSON can be an API response, not a page
+				!strings.Contains(r.URL.Path, ".xml") && // XML can be an API response, not a page
+				!strings.Contains(r.URL.Path, ".txt") &&
+				!strings.Contains(r.URL.Path, ".pdf") // Add other common asset extensions as needed
 			isHTTPS := r.TLS != nil
-			_, skipSplash := r.URL.Query()["baloo_skip_splash"]
-			if isHTTPS {
-				if skipSplash {
-					// If it's HTTPS and the skip splash flag is present, proceed to Middleware
-					Middleware(w, r)
-				} else {
-					// HTTPS splash page: Shows a loading screen, then reloads with a skip parameter
-					// This ensures the client sees the splash screen, then gets the actual content
-					var targetURL string
-					if r.URL.RawQuery == "" {
-						targetURL = "https://" + r.Host + r.URL.Path + "?baloo_skip_splash=true"
-					} else {
-						targetURL = "https://" + r.Host + r.URL.Path + "?" + r.URL.RawQuery + "&baloo_skip_splash=true"
-					}
 
-					httpsRedirPage := `<!DOCTYPE html><html><head><title>Loading Secure Content...</title><style>body{font-family:'Helvetica Neue',sans-serif;color:#333;margin:0;padding:0}.container{display:flex;align-items:center;justify-content:center;height:100vh;background:#fafafa}.message-box{width:600px;padding:20px;background:#fff;border-radius:5px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.message-box h1{font-size:36px;margin-bottom:20px}.message-box p{font-size:16px;line-height:1.5;margin-bottom:20px}</style><script>setTimeout(function(){window.location.href="` + targetURL + `"},1e3)</script></head><body><div class=container><div class=message-box><h1>Loading Secure Content...</h1><p>Please wait while we establish a secure connection and fetch your content.</p><br><p>brought to you by limitless</p></div></div></body></html>`
-					fmt.Fprint(w, httpsRedirPage)
+			// Check for the "skip splash" query parameter for HTTPS
+			_, skipSplash := r.URL.Query()["baloo_skip_splash"]
+			if isHTMLRequest {
+				// Only apply splash logic if it's likely an HTML document request
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				w.Header().Set("Pragma", "no-cache")
+
+				if isHTTPS {
+					if skipSplash {
+						// If it's HTTPS and the skip splash flag is present, proceed to Middleware
+						Middleware(w, r)
+					} else {
+						// HTTPS splash page: Shows a loading screen, then reloads with a skip parameter
+						var targetURL string
+						if r.URL.RawQuery == "" {
+							targetURL = "https://" + r.Host + r.URL.Path + "?baloo_skip_splash=true"
+						} else {
+							targetURL = "https://" + r.Host + r.URL.Path + "?" + r.URL.RawQuery + "&baloo_skip_splash=true"
+						}
+
+						httpsRedirPage := `<!DOCTYPE html><html><head><title>Loading Secure Content...</title><style>body{font-family:'Helvetica Neue',sans-serif;color:#333;margin:0;padding:0}.container{display:flex;align-items:center;justify-content:center;height:100vh;background:#fafafa}.message-box{width:600px;padding:20px;background:#fff;border-radius:5px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.message-box h1{font-size:36px;margin-bottom:20px}.message-box p{font-size:16px;line-height:1.5;margin-bottom:20px}</style><script>setTimeout(function(){window.location.href="` + targetURL + `"},1e3)</script></head><body><div class=container><div class=message-box><h1>Loading Secure Content...</h1><p>Please wait while we establish a secure connection and fetch your content.</p><br><p>brought to you by limitless</p></div></div></body></html>`
+						fmt.Fprint(w, httpsRedirPage)
+					}
+				} else {
+					// HTTP splash page: Redirects to HTTPS
+					httpRedirPage := `<!DOCTYPE html><html><head><title>Redirecting to HTTPS</title><script>setTimeout(function(){window.location.href="https://` + r.Host + r.URL.Path + r.URL.RawQuery + `"},1e3)</script></head><body><h1>Redirecting to HTTPS</h1><p>Please wait while we securely redirect you...</p></body></html>`
+					fmt.Fprint(w, httpRedirPage)
 				}
 			} else {
-				// HTTP splash page: Redirects to HTTPS
-				httpRedirPage := `<!DOCTYPE html><html><head><title>Redirecting to HTTPS</title><script>setTimeout(function(){window.location.href="https://` + r.Host + r.URL.Path + r.URL.RawQuery + `"},1e3)</script></head><body><h1>Redirecting to HTTPS</h1><p>Please wait while we securely redirect you...</p></body></html>`
-				fmt.Fprint(w, httpRedirPage)
-				// http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently) // Server-side redirect
+				// If it's not an HTML request (e.g., for JS, CSS, images), always proxy directly
+				Middleware(w, r)
 			}
 			// http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently) // Redirect to HTTPS
 		})
