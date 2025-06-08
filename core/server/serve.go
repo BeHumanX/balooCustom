@@ -95,24 +95,26 @@ func Serve() {
 			domainData.TotalRequests++               // Increment the request count
 			domains.DomainsData[r.Host] = domainData // Update the domain data in the map
 			firewall.Mutex.Unlock()                  // Unlock after updating
-			isHTMLRequest := strings.Contains(r.Header.Get("Accept"), "text/html") &&
-				!strings.Contains(r.URL.Path, ".js") &&
-				!strings.Contains(r.URL.Path, ".css") &&
-				!strings.Contains(r.URL.Path, ".png") &&
-				!strings.Contains(r.URL.Path, ".jpg") &&
-				!strings.Contains(r.URL.Path, ".jpeg") &&
-				!strings.Contains(r.URL.Path, ".gif") &&
-				!strings.Contains(r.URL.Path, ".svg") &&
-				!strings.Contains(r.URL.Path, ".ico") &&
-				!strings.Contains(r.URL.Path, ".webp") &&
-				!strings.Contains(r.URL.Path, ".json") && // JSON can be an API response, not a page
-				!strings.Contains(r.URL.Path, ".xml") && // XML can be an API response, not a page
-				!strings.Contains(r.URL.Path, ".txt") &&
-				!strings.Contains(r.URL.Path, ".pdf") // Add other common asset extensions as needed
 			isHTTPS := r.TLS != nil
+			// Check for the "baloo_splash_seen" cookie to determine if splash should be skipped
+			_, err := r.Cookie("baloo_splash_seen")
+			splashSeen := err == nil // If cookie exists, splash has been seen
 
-			// Check for the "skip splash" query parameter for HTTPS
-			_, skipSplash := r.URL.Query()["baloo_skip_splash"]
+			// Determine if the request is for an HTML document
+			// Heuristic: Check Accept header for "text/html" and if URL path does not strongly suggest an asset.
+			isHTMLRequest := strings.Contains(r.Header.Get("Accept"), "text/html")
+
+			// Refine by checking common asset extensions (regardless of Accept header for robustness)
+			assetExtensions := []string{
+				".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+				".webp", ".json", ".xml", ".txt", ".pdf", ".mp4", ".mp3", ".woff", ".woff2", ".ttf",
+			}
+			for _, ext := range assetExtensions {
+				if strings.HasSuffix(r.URL.Path, ext) {
+					isHTMLRequest = false // If it's an asset, it's not an HTML request for splash purposes
+					break
+				}
+			}
 			if isHTMLRequest {
 				// Only apply splash logic if it's likely an HTML document request
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -120,16 +122,27 @@ func Serve() {
 				w.Header().Set("Pragma", "no-cache")
 
 				if isHTTPS {
-					if skipSplash {
-						// If it's HTTPS and the skip splash flag is present, proceed to Middleware
+					if splashSeen {
+						// If it's HTTPS and the splash has been seen, proceed to Middleware
 						Middleware(w, r)
 					} else {
-						// HTTPS splash page: Shows a loading screen, then reloads with a skip parameter
-						var targetURL string
-						if r.URL.RawQuery == "" {
-							targetURL = "https://" + r.Host + r.URL.Path + "?baloo_skip_splash=true"
-						} else {
-							targetURL = "https://" + r.Host + r.URL.Path + "?" + r.URL.RawQuery + "&baloo_skip_splash=true"
+						// HTTPS splash page: Shows a loading screen, then reloads the original URL
+						// And sets a cookie so the splash is skipped next time.
+						// Set the cookie for the session
+						http.SetCookie(w, &http.Cookie{
+							Name:     "baloo_splash_seen",
+							Value:    "true",
+							Path:     "/",                            // Available for all paths
+							Expires:  time.Now().Add(24 * time.Hour), // Or use MaxAge for session-long
+							HttpOnly: true,                           // Not accessible via client-side scripts
+							Secure:   true,                           // Only sent over HTTPS
+							SameSite: http.SameSiteLaxMode,           // Recommended for security
+						})
+
+						// The target URL is the original URL without any added parameters
+						targetURL := "https://" + r.Host + r.URL.Path
+						if r.URL.RawQuery != "" {
+							targetURL += "?" + r.URL.RawQuery
 						}
 
 						httpsRedirPage := `<!DOCTYPE html><html><head><title>Loading Secure Content...</title><style>body{font-family:'Helvetica Neue',sans-serif;color:#333;margin:0;padding:0}.container{display:flex;align-items:center;justify-content:center;height:100vh;background:#fafafa}.message-box{width:600px;padding:20px;background:#fff;border-radius:5px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.message-box h1{font-size:36px;margin-bottom:20px}.message-box p{font-size:16px;line-height:1.5;margin-bottom:20px}</style><script>setTimeout(function(){window.location.href="` + targetURL + `"},1e3)</script></head><body><div class=container><div class=message-box><h1>Loading Secure Content...</h1><p>Please wait while we establish a secure connection and fetch your content.</p><br><p>brought to you by limitless</p></div></div></body></html>`
