@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"goProxy/core/domains"
@@ -9,17 +11,27 @@ import (
 	"net/http"
 )
 
+// ... other imports
+
+func generateSecureSecret(length int) string {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		panic(err)
+	}
+	return base64.URLEncoding.EncodeToString(bytes)
+}
+
 func Generate() {
 	// Create a default configuration (similar to what you'd have in a default config.json)
 	defaultConfig := domains.Configuration{
 		Proxy: domains.Proxy{
 			Secrets: map[string]string{
-				"cookie":     "CHANGE_ME_COOKIE_SECRET",
-				"javascript": "CHANGE_ME_JS_SECRET",
-				"captcha":    "CHANGE_ME_CAPTCHA_SECRET",
+				"cookie":     generateSecureSecret(32),
+				"javascript": generateSecureSecret(32),
+				"captcha":    generateSecureSecret(32),
 			},
-			AdminSecret: "CHANGE_ME_ADMIN_SECRET",
-			APISecret:   "CHANGE_ME_API_SECRET",
+			AdminSecret: generateSecureSecret(32),
+			APISecret:   generateSecureSecret(32),
 			Timeout: domains.TimeoutSettings{
 				Idle:       120,
 				Read:       10,
