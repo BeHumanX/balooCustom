@@ -9,6 +9,7 @@ import (
 	"goProxy/core/firewall"
 	"goProxy/core/pnc"
 	"goProxy/core/proxy"
+	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -95,7 +96,11 @@ func Serve() {
 			domainData.TotalRequests++               // Increment the request count
 			domains.DomainsData[r.Host] = domainData // Update the domain data in the map
 			firewall.Mutex.Unlock()                  // Unlock after updating
-			isHTTPS := r.TLS != nil
+
+			// Determine if it's an HTTPS request
+			isHTTPS := r.TLS != nil ||
+				strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+
 			// Check for the "baloo_splash_seen" cookie to determine if splash should be skipped
 			_, err := r.Cookie("baloo_splash_seen")
 			splashSeen := err == nil // If cookie exists, splash has been seen
@@ -115,6 +120,7 @@ func Serve() {
 					break
 				}
 			}
+
 			if isHTMLRequest {
 				// Only apply splash logic if it's likely an HTML document request
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -145,7 +151,9 @@ func Serve() {
 							targetURL += "?" + r.URL.RawQuery
 						}
 
-						httpsRedirPage := `<!DOCTYPE html><html><head><title>Loading Secure Content...</title><style>body{font-family:'Helvetica Neue',sans-serif;color:#333;margin:0;padding:0}.container{display:flex;align-items:center;justify-content:center;height:100vh;background:#fafafa}.message-box{width:600px;padding:20px;background:#fff;border-radius:5px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.message-box h1{font-size:36px;margin-bottom:20px}.message-box p{font-size:16px;line-height:1.5;margin-bottom:20px}</style><script>setTimeout(function(){window.location.href="` + targetURL + `"},1e3)</script></head><body><div class=container><div class=message-box><h1>Loading Secure Content...</h1><p>Please wait while we establish a secure connection and fetch your content.</p><br><p>brought to you by limitless</p></div></div></body></html>`
+						safeHost := template.JSEscapeString(r.Host)
+						// Updated httpsRedirPage with fixed JavaScript string concatenation
+						httpsRedirPage := `<!DOCTYPE html><html lang="en"><head> <meta charset="UTF-8"> <title>LimitlessTXT Anti-DDoS</title> <script src="https://cdn.tailwindcss.com"></script></head><body class="bg-white text-gray-800 flex items-center justify-center h-screen"> <div class="text-center max-w-md mx-auto p-6 rounded-2xl shadow-lg border border-gray-200"> <h1 class="text-2xl font-semibold mb-2">Checking your browser before accessing</h1> <p class="text-sm mb-4">This process is automatic. Your browser will redirect once the check is complete.</p> <div class="text-left text-sm bg-gray-100 rounded-lg p-4 border border-gray-200 mb-6"> <p><strong>Challenge:</strong></p> <code id="challenge" class="break-words text-gray-600">Initializing challenge...</code> <p class="mt-2 text-xs text-gray-500" id="challengeStatus">Solving SHA-256 PoW challenge...</p> </div> <div class="w-full bg-gray-200 rounded-full h-3 mb-4"> <div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-75 ease-in-out" style="width:0%"></div> </div> <p class="text-xs text-gray-500" id="statusText">Initializing...</p> </div> <script> async function sha256(message) { const msgBuffer = new TextEncoder().encode(message); const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer); const hashArray = Array.from(new Uint8Array(hashBuffer)); const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join(''); return hashHex; } const challengeEl = document.getElementById("challenge"); const progressEl = document.getElementById("progressBar"); const statusEl = document.getElementById("statusText"); const initialChallengePrefix = "your_secret_server_prefix_"; const targetURL = "` + safeHost + `"; function randomStr(length) { const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'; let result = ''; for (let i = 0; i < length; i++) { result += chars.charAt(Math.floor(Math.random() * chars.length)); } return result; } let step = 0; const totalSteps = 30; const interval = setInterval(async () => { const fakeToken = randomStr(11); const dummyHash = "c0ffee00deadbeefc0ffee00deadbeefc0ffee00deadbeefc0ffee00deadbeef"; challengeEl.textContent = 'sha256("' + initialChallengePrefix + '" + "' + fakeToken + '") = ' + dummyHash.substring(0, 16) + '...'; const percent = Math.floor((step / totalSteps) * 100); progressEl.style.width = percent + "%"; statusEl.textContent = "Solving challenge... " + percent + "%"; step++; if (step > totalSteps) { clearInterval(interval); progressEl.style.width = "100%"; statusEl.textContent = "Challenge passed! Redirecting..."; setTimeout(() => { window.location.href = "https://" + targetURL; }, 500); } }, 30); </script></body></html>`
 						fmt.Fprint(w, httpsRedirPage)
 					}
 				} else {
@@ -157,7 +165,6 @@ func Serve() {
 				// If it's not an HTML request (e.g., for JS, CSS, images), always proxy directly
 				Middleware(w, r)
 			}
-			// http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently) // Redirect to HTTPS
 		})
 		service.Handler = commonHandler
 		service.SetKeepAlivesEnabled(true)

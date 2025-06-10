@@ -2,118 +2,97 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"goProxy/core/domains"
 	"goProxy/core/utils"
 	"io/ioutil"
 	"net/http"
-	"strings"
 )
 
 func Generate() {
-
-	fmt.Println("[ " + utils.PrimaryColor("No Configuration File Found") + " ]")
-	fmt.Println("[ " + utils.PrimaryColor("Configuring Proxy Now") + " ]")
-	fmt.Println("")
-
-	gConfig := domains.Configuration{
+	// Create a default configuration (similar to what you'd have in a default config.json)
+	defaultConfig := domains.Configuration{
 		Proxy: domains.Proxy{
-			Cloudflare:  utils.AskBool("Use This Proxy With Cloudflare? (y/N)", false),
-			AdminSecret: utils.RandomString(25),
-			APISecret:   utils.RandomString(30),
-			Timeout: domains.TimeoutSettings{
-				Idle:       utils.AskInt("How Many Seconds Should An Indle Connection Be Kept Open?", 3),
-				Read:       utils.AskInt("How Many Seconds Should A Reading Connection Be Kept Open?", 5),
-				Write:      utils.AskInt("How Many Seconds Should A Writing Connection Be Kept Open?", 5),
-				ReadHeader: utils.AskInt("How Many Seconds Should Be Allowed To Read A Connections Header?", 5),
-			},
 			Secrets: map[string]string{
-				"cookie":     utils.RandomString(20),
-				"javascript": utils.RandomString(20),
-				"captcha":    utils.RandomString(20),
+				"cookie":     "CHANGE_ME_COOKIE_SECRET",
+				"javascript": "CHANGE_ME_JS_SECRET",
+				"captcha":    "CHANGE_ME_CAPTCHA_SECRET",
 			},
+			AdminSecret: "CHANGE_ME_ADMIN_SECRET",
+			APISecret:   "CHANGE_ME_API_SECRET",
+			Timeout: domains.TimeoutSettings{
+				Idle:       120,
+				Read:       10,
+				ReadHeader: 5,
+				Write:      10,
+			},
+			RatelimitWindow: 10,
 			Ratelimits: map[string]int{
-				"requests":           utils.AskInt("After How Many Requests From An IP Within 2 Minutes Should It Be Blocked?", 1000),
-				"unknownFingerprint": utils.AskInt("After How Many Requests From An Unknown Fingerprint Within 2 Minutes Should It Be Blocked?", 150),
-				"challengeFailures":  utils.AskInt("After How Many Failed Attempts At Solving A Challenge From An IP Within 2 Minutes Should It Be Blocked?", 40),
-				"noRequestsSent":     utils.AskInt("After How Many TCP Connection Attempts Without Sending A Http Request From An IP Within 2 Minutes Should It Be Blocked?", 10),
+				"requests":           1000,
+				"unknownFingerprint": 50,
+				"challengeFailures":  5,
+				"noRequestsSent":     10,
 			},
 		},
-		Domains: []domains.Domain{},
+		Domains: []domains.Domain{}, // No domains initially, AddDomain will handle this
 	}
 
-	domains.Config = &gConfig
+	// Set the global config variable
+	domains.Config = &defaultConfig
 
-	jsonConfig, err := json.Marshal(gConfig)
+	// Save the default config to MongoDB
+	err := Save(*domains.Config)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to save generated config to MongoDB: %v", err))
 	}
-
-	err = ioutil.WriteFile("config.json", jsonConfig, 0644)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("")
-	AddDomain()
+	fmt.Println("[ " + utils.PrimaryColor("+") + " ] [ Default configuration generated and saved to MongoDB. Please update secrets! ]")
 }
 
 func AddDomain() {
-	fmt.Println("[ " + utils.PrimaryColor("No Domain Configurations Found") + " ]")
-	fmt.Println("[ " + utils.PrimaryColor("Configure New Domains In The Config.json") + " ]")
-	fmt.Println("")
-	gDomain := domains.Domain{
-		Name:        utils.AskString("What Is The Name Of Your Domain (eg. \"example.com\")", "example.com"),
-		Backend:     utils.AskString("What Is The Backed/Server The Proxy Should Proxy To?", "1.1.1.1"),
-		Scheme:      strings.ToLower(utils.AskString("What Scheme Should The Proxy Use To Communicate With Your Backend? (http/https)", "http")),
-		Certificate: utils.AskString("What Is The Path To The SSL Certificate For Your Domain? (Leave Empty If You Are Using The Proxy Behind Cloudflare)", ""),
-		Key:         utils.AskString("What Is The Path To The SSL Key For Your Domain? (Leave Empty If You Are Using The Proxy Behind Cloudflare)", ""),
+	fmt.Println("[ " + utils.PrimaryColor("!") + " ] [ No domains configured. Please add a domain. ]")
+	// Example of adding a default domain. In a real application, you'd likely
+	// prompt the user for input or have a more sophisticated domain addition process.
+	exampleDomain := domains.Domain{
+		Name:        "example.com",
+		Scheme:      "http",
+		Backend:     "localhost:8080",
+		Certificate: "", // Leave empty if Cloudflare is used or if you don't have one yet
+		Key:         "", // Leave empty if Cloudflare is used or if you don't have one yet
 		Webhook: domains.WebhookSettings{
-			URL:            utils.AskString("What Is The Url For Your Discord Webhook? (Leave Empty If You Do Not Want One)", ""),
-			Name:           utils.AskString("What Is The Name For Your Discord Webhook? (Leave Empty If You Do Not Want One)", ""),
-			Avatar:         utils.AskString("What Is The Url For Your Discord Webhook Avatar? (Leave Empty If You Do Not Want One)", ""),
-			AttackStartMsg: utils.AskString("What Is The Message Your Webhook Should Send When Your Website Is Under Attack?", ""),
-			AttackStopMsg:  utils.AskString("What Is The Message Your Webhook Should Send When Your Website Is No Longer Under Attack?", ""),
+			URL:            "",
+			Name:           "goProxy",
+			Avatar:         "",
+			AttackStartMsg: "Attack started on example.com!",
+			AttackStopMsg:  "Attack stopped on example.com!",
 		},
-		FirewallRules:       []domains.JsonRule{},
-		BypassStage1:        utils.AskInt("At How Many Bypassing Requests Per Second Would You Like To Activate Stage 2?", 75),
-		Stage2Difficulty:    utils.AskInt("How difficult should Stage 2 Be? (6 AT MOST recommended)", 5),
-		BypassStage2:        utils.AskInt("At How Many Bypassing Requests Per Second Would You Like To Activate Stage 3?", 250),
-		DisableBypassStage3: utils.AskInt("How Many Bypassing Requests Per Second Are Low Enough To Disable Stage 3?", 100),
-		DisableRawStage3:    utils.AskInt("How Many Requests Per Second Are Low Enough To Disable Stage 3? (Bypassing Requests Still Have To Be Low Enough)", 250),
-		DisableBypassStage2: utils.AskInt("How Many Bypassing Requests Per Second Are Low Enough To Disable Stage 2?", 50),
-		DisableRawStage2:    utils.AskInt("How Many Requests Per Second Are Low Enough To Disable Stage 2? (Bypassing Requests Still Have To Be Low Enough)", 75),
+		Stage2Difficulty: 5,
 	}
 
-	domains.Config.Domains = append(domains.Config.Domains, gDomain)
+	domains.Config.Domains = append(domains.Config.Domains, exampleDomain)
+	domains.Domains = append(domains.Domains, exampleDomain.Name) // Update the global domains slice
 
-	jsonConfig, err := json.Marshal(domains.Config)
+	err := Save(*domains.Config)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to save domain after adding: %v", err))
 	}
-
-	err = ioutil.WriteFile("config.json", jsonConfig, 0644)
-	if err != nil {
-		panic(err)
-	}
+	fmt.Println("[ " + utils.PrimaryColor("+") + " ] [ Added default domain 'example.com'. ]")
 }
 
-func GetFingerprints(url string, target *map[string]string) error {
+func GetFingerprints(url string, target interface{}) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return errors.New("failed to fetch fingerprints: " + err.Error())
+		panic(fmt.Errorf("failed to fetch fingerprints from %s: %v", url, err))
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return errors.New("failed to fetch fingerprints: " + err.Error())
+		panic(fmt.Errorf("failed to read fingerprint response body from %s: %v", url, err))
 	}
 
-	err = json.Unmarshal(body, &target)
+	err = json.Unmarshal(body, target)
 	if err != nil {
-		return errors.New("failed to fetch fingerprints: " + err.Error())
+		panic(fmt.Errorf("failed to unmarshal fingerprints from %s: %v", url, err))
 	}
-	return nil
+	fmt.Printf("[ %s ] [ Loaded fingerprints from %s ]\n", utils.PrimaryColor("+"), url)
 }
