@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	MongoDBURI       = "mongodb://localhost:27017"
+	MongoDBURI       = "mongodb://localhost:27117"
 	DatabaseName     = "goProxyConfig"
 	CollectionName   = "configurations"
 	ConfigDocumentID = "main_config"
