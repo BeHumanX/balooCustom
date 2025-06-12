@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var Fingerprint string = "S3LF_BU1LD_0R_M0D1F13D" // 455b9300-0a6f-48f1-82ee-bb1f6cf43500
+var Fingerprint string = "455b9300-0a6f-48f1-82ee-bb1f6cf43500" //
 
 func main() {
 
