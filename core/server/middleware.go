@@ -99,7 +99,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	domains.DomainsData[domainName] = domainData
 	firewall.Mutex.Unlock()
 
-	writer.Header().Set("baloo-Proxy", "1.5")
+	writer.Header().Set("L-FIREWALL.ID", "version-1.3")
 
 	//Start the suspicious level where the stage currently is
 	susLv := domainData.Stage
@@ -107,14 +107,14 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	//Ratelimit faster if client repeatedly fails the verification challenge (feel free to play around with the threshhold)
 	if ipCountCookie > proxy.FailChallengeRatelimit {
 		writer.Header().Set("Content-Type", "text/plain")
-		SendResponse("Blocked by BalooProxy.\nYou have been ratelimited. (R1)", buffer, writer)
+		SendResponse("Blocked by L-FIREWALL.\nYou have been ratelimited. (R1)", buffer, writer)
 		return
 	}
 
 	//Ratelimit spamming Ips (feel free to play around with the threshhold)
 	if ipCount > proxy.IPRatelimit {
 		writer.Header().Set("Content-Type", "text/plain")
-		SendResponse("Blocked by BalooProxy.\nYou have been ratelimited. (R2)", buffer, writer)
+		SendResponse("Blocked by L-FIREWALL.\nYou have been ratelimited. (R2)", buffer, writer)
 		return
 	}
 
@@ -122,7 +122,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	if browser == "" {
 		if fpCount > proxy.FPRatelimit {
 			writer.Header().Set("Content-Type", "text/plain")
-			SendResponse("Blocked by BalooProxy.\nYou have been ratelimited. (R3)", buffer, writer)
+			SendResponse("Blocked by L-FIREWALL.\nYou have been ratelimited. (R3)", buffer, writer)
 			return
 		}
 
@@ -135,7 +135,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	forbiddenFp := firewall.ForbiddenFingerprints[tlsFp]
 	if forbiddenFp != "" {
 		writer.Header().Set("Content-Type", "text/plain")
-		SendResponse("Blocked by BalooProxy.\nYour browser "+forbiddenFp+" is not allowed.", buffer, writer)
+		SendResponse("Blocked by L-FIREWALL.\nYour browser "+forbiddenFp+" is not allowed.", buffer, writer)
 		return
 	}
 
@@ -198,7 +198,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 			encryptedIP = utils.Encrypt(accessKey, proxy.CaptchaOTP)
 		default:
 			writer.Header().Set("Content-Type", "text/plain")
-			SendResponse("Blocked by BalooProxy.\nSuspicious request of level "+susLvStr+" (base "+strconv.Itoa(domainData.Stage)+")", buffer, writer)
+			SendResponse("Blocked by L-FIREWALL.\nSuspicious request of level "+susLvStr+" (base "+strconv.Itoa(domainData.Stage)+")", buffer, writer)
 			return
 		}
 		firewall.CacheIps.Store(accessKey+susLvStr, encryptedIP)
@@ -211,7 +211,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	//Check if client provided correct verification result
-	if !strings.Contains(request.Header.Get("Cookie"), "__bProxy_v="+encryptedIP) {
+	if !strings.Contains(request.Header.Get("Cookie"), "__LFIREWALL_v="+encryptedIP) {
 
 		firewall.Mutex.Lock()
 		firewall.WindowAccessIpsCookie[proxy.Last10SecondTimestamp][ip]++
@@ -222,14 +222,120 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 		case 0:
 			//This request is not to be challenged (whitelist)
 		case 1:
-			writer.Header().Set("Set-Cookie", "_1__bProxy_v="+encryptedIP+"; SameSite=Lax; path=/; Secure")
+			writer.Header().Set("Set-Cookie", "_1__LFIREWALL_v="+encryptedIP+"; SameSite=Lax; path=/; Secure")
 			http.Redirect(writer, request, request.URL.RequestURI(), http.StatusFound)
 			return
 		case 2:
 			publicSalt := encryptedIP[:len(encryptedIP)-domainData.Stage2Difficulty]
 			writer.Header().Set("Content-Type", "text/html")
 			writer.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0") // Prevent special(ed) browsers from caching the challenge
-			SendResponse(`<!doctypehtml><html lang=en><meta charset=UTF-8><meta content="width=device-width,initial-scale=1"name=viewport><title>Completing challenge ...</title><style>body,html{height:100%;width:100%;margin:0;display:flex;flex-direction:column;justify-content:center;align-items:center;background-color:#f0f0f0;font-family:Arial,sans-serif}.loader{display:flex;justify-content:space-around;align-items:center;width:100px;height:100px}.loader div{width:20px;height:20px;background-color:#333;border-radius:50%;animation:bounce .6s infinite alternate}.loader div:nth-child(2){animation-delay:.2s}.loader div:nth-child(3){animation-delay:.4s}@keyframes bounce{to{transform:translateY(-30px)}}.message{text-align:center;margin-top:20px;color:#333}.subtext{text-align:center;color:#666;font-size:.9em;margin-top:5px}.placeholder-container{width:25%;text-align:center;margin:10px 0}.placeholder-label{font-weight:700;margin-bottom:5px}.placeholder{background-color:#e0e0e0;padding:10px;border-radius:5px;word-break:break-all;font-family:monospace;cursor:pointer;}</style><div class=loader><div></div><div></div><div></div></div><div class=message><p>Completing challenge ...<div class=subtext>The process is automatic and shouldn't take too long. Please be patient.</div></div><div class=placeholder-container><div class=placeholder-label>publicSalt:</div><div class=placeholder id=publicSalt onclick='ctc("publicSalt")'><span>`+publicSalt+`</span></div></div><div class=placeholder-container><div class=placeholder-label>challenge:</div><div class=placeholder id=challenge onclick='ctc("challenge")'><span>`+hashedEncryptedIP+`</span></div></div><script>function ctc(t){navigator.clipboard.writeText(document.getElementById(t).innerText)}</script><script src="https://cdn.jsdelivr.net/gh/41Baloo/balooPow@main/balooPow.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script><script>function solved(e){document.cookie="_2__bProxy_v=`+publicSalt+`"+e.solution+"; SameSite=Lax; path=/; Secure",location.href=location.href}new BalooPow("`+publicSalt+`",`+strconv.Itoa(domainData.Stage2Difficulty)+`,"`+hashedEncryptedIP+`",!1).Solve().then(e=>{if(e.match == ""){solved(e)}else alert("Navigator Missmatch ("+e.match+"). Please contact @ddosmitigation")});</script>`, buffer, writer)
+
+			htmlContent := `
+			<html>
+			<head>
+			  <meta charset="UTF-8">
+			  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+			  <title>🔥 L-FIREWALL 🛡️</title>
+			  <style>
+				body {
+				  margin: 0;
+				  display: flex;
+				  justify-content: center;
+				  align-items: center;
+				  height: 100vh;
+				  background: linear-gradient(135deg, #0d1117, #1a1d25);
+				  font-family: Arial, sans-serif;
+				  color: #ffffff;
+				  overflow: hidden;
+				}
+		
+				.center {
+				  display: flex;
+				  align-items: center;
+				  justify-content: center;
+				  height: 100vh;
+				}
+		
+				.box {
+				  background-color: #1f2329;
+				  border: 1px solid #444;
+				  border-radius: 8px;
+				  padding: 25px;
+				  width: 500px;
+				  text-align: center;
+				  animation: slideUp 1s ease-in-out;
+				}
+		
+				.box * {
+				  transition: opacity 0.3s ease-in-out;
+				}
+		
+				.title {
+				  font-size: 2.5rem;
+				  margin-bottom: 1rem;
+				  font-weight: bold;
+				  background: linear-gradient(90deg, #00ff9d, #00bfff);
+				  -webkit-background-clip: text;
+				  -webkit-text-fill-color: transparent;
+				}
+		
+				.success {
+				  display: none;
+				  padding: 20px;
+				  border-radius: 4px;
+				  margin-top: 10px;
+				  background-color: #dff0d8;
+				  border: 1px solid #d6e9c6;
+				  color: #3c763d;
+				}
+		
+				@keyframes slideUp {
+				  from { transform: translateY(30px); opacity: 0; }
+				  to { transform: translateY(0); opacity: 1; }
+				}
+			  </style>
+			</head>
+			<body>
+			  <div class="center" id="center">
+				<div class="box" id="box">
+				  <div class="title">🔥 L-FIREWALL 🛡️</div>
+				  <h2>Verifikasi Keamanan</h2>
+				  <div class="success" id="successMessage">Success! Redirecting ...</div>
+				  <div class=placeholder-container>
+					<div class=placeholder-label>publicSalt:</div>
+					<div class=placeholder id=publicSalt onclick='ctc("publicSalt")'><span>` + publicSalt + `</span></div>
+				  </div>
+				  <div class=placeholder-container>
+					<div class=placeholder-label>challenge:</div>
+					<div class=placeholder id=challenge onclick='ctc("challenge")'><span>` + hashedEncryptedIP + `</span></div>
+				  </div>
+				</div>
+			  </div>
+			</body>
+		
+			<script>
+			  function ctc(t){navigator.clipboard.writeText(document.getElementById(t).innerText)}
+			</script>
+			<script src="https://cdn.jsdelivr.net/gh/41Baloo/balooPow@main/balooPow.min.js"></script>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+			<script>
+			  function solved(e){
+				document.cookie = "_2__LFIREWALL_v=` + publicSalt + `" + e.solution + "; SameSite=Lax; path=/; Secure";
+				location.href = location.href;
+			  }
+		
+			  new BalooPow("` + publicSalt + `", ` + strconv.Itoa(domainData.Stage2Difficulty) + `, "` + hashedEncryptedIP + `", !1).Solve().then(e => {
+				if (e.match == "") {
+				  solved(e);
+				} else {
+				  alert("Navigator Missmatch (" + e.match + "). Please contact @vpsindo");
+				}
+			  });
+			</script>
+			</html>
+			`
+
+			SendResponse(htmlContent, buffer, writer)
 			return
 		case 3:
 			secretPart := encryptedIP[:6]
@@ -273,11 +379,11 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 
 				var captchaBuf, maskBuf bytes.Buffer
 				if err := png.Encode(&captchaBuf, captchaImg); err != nil {
-					SendResponse("BalooProxy Error: Failed to encode captcha: "+err.Error(), buffer, writer)
+					SendResponse("L-FIREWALL Error: Failed to encode captcha: "+err.Error(), buffer, writer)
 					return
 				}
 				if err := png.Encode(&maskBuf, maskImg); err != nil {
-					SendResponse("BalooProxy Error: Failed to encode captchaMask: "+err.Error(), buffer, writer)
+					SendResponse("L-FIREWALL Error: Failed to encode captchaMask: "+err.Error(), buffer, writer)
 					return
 				}
 
@@ -293,11 +399,11 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 
 			writer.Header().Set("Content-Type", "text/html")
 			writer.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0") // Prevent special(ed) browsers from caching the challenge
-			SendResponse(`<style>body{background-color:#f5f5f5;font-family:Arial,sans-serif}.center{display:flex;align-items:center;justify-content:center;height:100vh}.box{background-color:#fff;border:1px solid #ddd;border-radius:4px;padding:20px;width:500px}canvas{display:block;margin:0 auto;max-width:100%;width:100%;height:auto}input[type=text]{width:100%;padding:12px 20px;margin:8px 0;box-sizing:border-box;border:2px solid #ccc;border-radius:4px}button{width:100%;background-color:#4caf50;color:#fff;padding:14px 20px;margin:8px 0;border:none;border-radius:4px;cursor:pointer}button:hover{background-color:#45a049}.box{background-color:#fff;border:1px solid #ddd;border-radius:4px;padding:20px;width:500px;transition:height .1s;position:block}.box *{transition:opacity .1s}.success{background-color:#dff0d8;border:1px solid #d6e9c6;border-radius:4px;color:#3c763d;padding:20px}.failure{background-color:#f0d8d8;border:1px solid #e9c6c6;border-radius:4px;color:#763c3c;padding:20px}.collapsible{background-color:#f5f5f5;color:#444;cursor:pointer;padding:18px;width:100%;border:none;text-align:left;outline:0;font-size:15px}.collapsible:after{content:'\002B';color:#777;font-weight:700;float:right;margin-left:5px}.collapsible.active:after{content:"\2212"}.collapsible:hover{background-color:#e5e5e5}.collapsible-content{padding:0 18px;max-height:0;overflow:hidden;transition:max-height .2s ease-out;background-color:#f5f5f5}.captcha-wrapper{position:relative;width:100%;height:200px}.captcha-wrapper canvas{position:absolute}input[type=range]{-webkit-appearance:none;width:100%;height:25px;background:#ddd;outline:0;opacity:.7;transition:opacity .2s;border-radius:4px;margin:8px 0}input[type=range]:hover{opacity:1}input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:25px;height:25px;background:#4caf50;cursor:pointer;border-radius:50%}input[type=range]::-moz-range-thumb{width:25px;height:25px;background:#4caf50;cursor:pointer;border-radius:50%}</style><div class=center id=center><div class=box id=box><h1>Drag the <b>slider</b> and enter the <b>green</b> text you see in the picture</h1><div class=captcha-wrapper><canvas height=37 id=captcha width=100></canvas><canvas height=37 id=mask width=100></canvas></div><input id=captcha-slider max=50 min=-50 type=range><form onsubmit="return checkAnswer(event)"><input id=text type=text maxlength=6 placeholder=Solution required> <button type=submit>Submit</button></form><div class=success id=successMessage style=display:none>Success! Redirecting ...</div><div class=failure id=failMessage style=display:none>Failed! Please try again.</div><button class=collapsible>Why am I seeing this page?</button><div class=collapsible-content><p>The website you are trying to visit needs to make sure that you are not a bot. This is a common security measure to protect websites from automated spam and abuse. By entering the characters you see in the picture, you are helping to verify that you are a real person.</div></div></div><script>let captcha_canvas=document.getElementById("captcha"),captcha_ctx=captcha_canvas.getContext("2d"),mask_canvas=document.getElementById("mask"),mask_ctx=mask_canvas.getContext("2d"),slider=document.getElementById("captcha-slider"),demo_slider=!1,demo_val=1;var i,captcha_image=new Image,mask_image=new Image;function checkAnswer(e){e.preventDefault();var a=document.getElementById("text").value;document.cookie="`+ip+`_3__bProxy_v="+a+"`+publicPart+`; SameSite=Lax; path=/; Secure",fetch("https://"+location.hostname+"/_bProxy/verified").then(function(e){return e.text()}).then(function(e){"verified"===e?(document.getElementById("successMessage").style.display="block",setInterval(function(){var e=document.getElementById("box"),a=e.offsetHeight,t=setInterval(function(){a-=20,e.style.height=a+"px";for(var c=e.children,s=0;s<c.length;s++)c[s].style.opacity=0;a<=0&&(e.style.height="0",e.remove(),clearInterval(t),location.href=location.href)},20)},1e3)):(document.getElementById("failMessage").style.display="block",setInterval(function(){location.href=location.href},1e3))}).catch(function(e){document.getElementById("failMessage").style.display="block",setInterval(function(){location.href=location.href},1e3)})}captcha_image.onload=function(){captcha_ctx.drawImage(captcha_image,(captcha_canvas.width-captcha_image.width)/2,(captcha_canvas.height-captcha_image.height)/2)},captcha_image.src="data:image/png;base64,`+captchaData+`",mask_image.onload=function(){mask_ctx.drawImage(mask_image,(mask_canvas.width-mask_image.width)/2,(mask_canvas.height-mask_image.height)/2)},mask_image.src="data:image/png;base64,`+maskData+`";let demo_int=setInterval(()=>{if(!demo_slider){clearInterval(demo_int);return}slider.value<=-50&&(demo_val=1),slider.value>=50&&(demo_val=-1),slider.value=parseInt(slider.value)+demo_val,updateCaptcha()},50);function updateCaptcha(){let e=parseInt(slider.value);mask_ctx.clearRect(0,0,mask_canvas.width,mask_canvas.height),mask_ctx.drawImage(mask_image,(mask_canvas.width-mask_image.width)/2+e,0)}slider.oninput=function(){demo_slider=!1,updateCaptcha()};var coll=document.getElementsByClassName("collapsible");for(i=0;i<coll.length;i++)coll[i].addEventListener("click",function(){this.classList.toggle("active");var e=this.nextElementSibling;e.style.maxHeight?e.style.maxHeight=null:e.style.maxHeight=e.scrollHeight+"px"});</script>`, buffer, writer)
+			SendResponse(`<style>body{background-color:#8A8A8A;font-family:Arial,sans-serif}.center{display:flex;align-items:center;justify-content:center;height:100vh}.box{background-color:#8A8A8A;border:1px solid #ddd;border-radius:4px;padding:20px;width:500px}canvas{display:block;margin:0 auto;max-width:100%;width:100%;height:auto}input[type=text]{width:100%;padding:12px 20px;margin:8px 0;box-sizing:border-box;border:2px solid #ccc;border-radius:4px}button{width:100%;background-color:#8A8A8A;color:#fff;padding:14px 20px;margin:8px 0;border:none;border-radius:4px;cursor:pointer}button:hover{background-color:#45a049}.box{background-color:#fff;border:1px solid #ddd;border-radius:4px;padding:20px;width:500px;transition:height .1s;position:block}.box *{transition:opacity .1s}.success{background-color:#dff0d8;border:1px solid #d6e9c6;border-radius:4px;color:#3c763d;padding:20px}.failure{background-color:#f0d8d8;border:1px solid #e9c6c6;border-radius:4px;color:#763c3c;padding:20px}.collapsible{background-color:#f5f5f5;color:#444;cursor:pointer;padding:18px;width:100%;border:none;text-align:left;outline:0;font-size:15px}.collapsible:after{content:'\002B';color:#777;font-weight:700;float:right;margin-left:5px}.collapsible.active:after{content:"\2212"}.collapsible:hover{background-color:#e5e5e5}.collapsible-content{padding:0 18px;max-height:0;overflow:hidden;transition:max-height .2s ease-out;background-color:#f5f5f5}.captcha-wrapper{position:relative;width:100%;height:200px}.captcha-wrapper canvas{position:absolute}input[type=range]{-webkit-appearance:none;width:100%;height:25px;background:#ddd;outline:0;opacity:.7;transition:opacity .2s;border-radius:4px;margin:8px 0}input[type=range]:hover{opacity:1}input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:25px;height:25px;background:#4caf50;cursor:pointer;border-radius:50%}input[type=range]::-moz-range-thumb{width:25px;height:25px;background:#4caf50;cursor:pointer;border-radius:50%}</style><div class=center id=center><div class=box id=box><h1>Drag the <b>slider</b> and enter the <b>green</b> text you see in the picture</h1><div class=captcha-wrapper><canvas height=37 id=captcha width=100></canvas><canvas height=37 id=mask width=100></canvas></div><input id=captcha-slider max=50 min=-50 type=range><form onsubmit="return checkAnswer(event)"><input id=text type=text maxlength=6 placeholder=Solution required> <button type=submit>Submit</button></form><div class=success id=successMessage style=display:none>Success! Redirecting ...</div><div class=failure id=failMessage style=display:none>Failed! Please try again.</div><button class=collapsible>Why am I seeing this page?</button><div class=collapsible-content><p>The website you are trying to visit needs to make sure that you are not a bot. This is a common security measure to protect websites from automated spam and abuse. By entering the characters you see in the picture, you are helping to verify that you are a real person.</div></div></div><script>let captcha_canvas=document.getElementById("captcha"),captcha_ctx=captcha_canvas.getContext("2d"),mask_canvas=document.getElementById("mask"),mask_ctx=mask_canvas.getContext("2d"),slider=document.getElementById("captcha-slider"),demo_slider=!1,demo_val=1;var i,captcha_image=new Image,mask_image=new Image;function checkAnswer(e){e.preventDefault();var a=document.getElementById("text").value;document.cookie="`+ip+`_3__LFIREWALL_v="+a+"`+publicPart+`; SameSite=Lax; path=/; Secure",fetch("https://"+location.hostname+"/_LFIREWALL/verified").then(function(e){return e.text()}).then(function(e){"verified"===e?(document.getElementById("successMessage").style.display="block",setInterval(function(){var e=document.getElementById("box"),a=e.offsetHeight,t=setInterval(function(){a-=20,e.style.height=a+"px";for(var c=e.children,s=0;s<c.length;s++)c[s].style.opacity=0;a<=0&&(e.style.height="0",e.remove(),clearInterval(t),location.href=location.href)},20)},1e3)):(document.getElementById("failMessage").style.display="block",setInterval(function(){location.href=location.href},1e3))}).catch(function(e){document.getElementById("failMessage").style.display="block",setInterval(function(){location.href=location.href},1e3)})}captcha_image.onload=function(){captcha_ctx.drawImage(captcha_image,(captcha_canvas.width-captcha_image.width)/2,(captcha_canvas.height-captcha_image.height)/2)},captcha_image.src="data:image/png;base64,`+captchaData+`",mask_image.onload=function(){mask_ctx.drawImage(mask_image,(mask_canvas.width-mask_image.width)/2,(mask_canvas.height-mask_image.height)/2)},mask_image.src="data:image/png;base64,`+maskData+`";let demo_int=setInterval(()=>{if(!demo_slider){clearInterval(demo_int);return}slider.value<=-50&&(demo_val=1),slider.value>=50&&(demo_val=-1),slider.value=parseInt(slider.value)+demo_val,updateCaptcha()},50);function updateCaptcha(){let e=parseInt(slider.value);mask_ctx.clearRect(0,0,mask_canvas.width,mask_canvas.height),mask_ctx.drawImage(mask_image,(mask_canvas.width-mask_image.width)/2+e,0)}slider.oninput=function(){demo_slider=!1,updateCaptcha()};var coll=document.getElementsByClassName("collapsible");for(i=0;i<coll.length;i++)coll[i].addEventListener("click",function(){this.classList.toggle("active");var e=this.nextElementSibling;e.style.maxHeight?e.style.maxHeight=null:e.style.maxHeight=e.scrollHeight+"px"});</script>`, buffer, writer)
 			return
 		default:
 			writer.Header().Set("Content-Type", "text/plain")
-			SendResponse("Blocked by BalooProxy.\nSuspicious request of level "+susLvStr, buffer, writer)
+			SendResponse("Blocked by L-FIREWALL.\nSuspicious request of level "+susLvStr, buffer, writer)
 			return
 		}
 	}
@@ -322,32 +428,32 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	//Reserved proxy-paths
 
 	switch request.URL.Path {
-	case "/_bProxy/stats":
+	case "/_LFIREWALL/stats":
 		writer.Header().Set("Content-Type", "text/plain")
 		SendResponse("Stage: "+utils.StageToString(domainData.Stage)+"\nTotal Requests: "+strconv.Itoa(domainData.TotalRequests)+"\nBypassed Requests: "+strconv.Itoa(domainData.BypassedRequests)+"\nTotal R/s: "+strconv.Itoa(domainData.RequestsPerSecond)+"\nBypassed R/s: "+strconv.Itoa(domainData.RequestsBypassedPerSecond)+"\nProxy Fingerprint: "+proxy.Fingerprint, buffer, writer)
 		return
-	case "/_bProxy/fingerprint":
+	case "/_LFIREWALL/fingerprint":
 		writer.Header().Set("Content-Type", "text/plain")
 		SendResponse("IP: "+ip+"\nIP Requests: "+strconv.Itoa(ipCount)+"\nIP Challenge Requests: "+strconv.Itoa(ipCountCookie)+"\nSusLV: "+strconv.Itoa(susLv)+"\nFingerprint: "+tlsFp+"\nBrowser: "+browser+botFp, buffer, writer)
 		return
-	case "/_bProxy/verified":
+	case "/_LFIREWALL/verified":
 		writer.Header().Set("Content-Type", "text/plain")
 		SendResponse("verified", buffer, writer)
 		return
-	case "/_bProxy/" + proxy.AdminSecret + "/api/v1":
+	case "/_LFIREWALL/" + proxy.AdminSecret + "/api/v1":
 		result := api.Process(writer, request, domainData)
 		if result {
 			return
 		}
 
 	//Do not remove or modify this. It is required by the license
-	case "/_bProxy/credits":
+	case "/_LFIREWALL/credits":
 		writer.Header().Set("Content-Type", "text/plain")
-		SendResponse("BalooProxy; Lightweight http reverse-proxy https://github.com/41Baloo/balooProxy. Protected by GNU GENERAL PUBLIC LICENSE Version 2, June 1991", buffer, writer)
+		SendResponse("L-FIREWALL.ID version-1.3", buffer, writer)
 		return
 	}
 
-	if strings.HasPrefix(request.URL.Path, "/_bProxy/api/v2") {
+	if strings.HasPrefix(request.URL.Path, "/_LFIREWALL/api/v2") {
 		result := api.ProcessV2(writer, request)
 		if result {
 			return
