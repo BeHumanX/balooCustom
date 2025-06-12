@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"goProxy/core/db"
 	"goProxy/core/domains"
 	"goProxy/core/firewall"
 	"goProxy/core/proxy"
@@ -24,52 +25,17 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
-	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 )
-
-// Define your MongoDB connection URI and database/collection names
-const (
-	MongoDBURI       = "mongodb://localhost:27017" // Change if your MongoDB is elsewhere
-	DatabaseName     = "goProxyConfig"
-	CollectionName   = "configurations"
-	ConfigDocumentID = "main_config" // A unique ID for your single config document
-)
-
-var (
-	mongoClient      *mongo.Client
-	configCollection *mongo.Collection
-)
-
-func init() {
-	// Establish MongoDB connection when the package is initialized
-	fmt.Println("Connecting to MongoDB...")
-	clientOptions := options.Client().ApplyURI(MongoDBURI)
-	var err error
-	mongoClient, err = mongo.Connect(clientOptions)
-	if err != nil {
-		panic(fmt.Errorf("failed to connect to MongoDB: %v", err))
-	}
-
-	// Ping the primary to verify connection
-	err = mongoClient.Ping(context.Background(), readpref.Primary())
-	if err != nil {
-		panic(fmt.Errorf("failed to ping MongoDB: %v", err))
-	}
-
-	configCollection = mongoClient.Database(DatabaseName).Collection(CollectionName)
-	fmt.Println("MongoDB connection established successfully.")
-}
 
 func Load() {
 	var loadedConfig domains.Configuration
-	err := configCollection.FindOne(context.Background(), bson.M{"_id": ConfigDocumentID}).Decode(&loadedConfig)
+	err := db.Collection.FindOne(context.Background(), bson.M{"_id": db.ConfigDocumentID}).Decode(&loadedConfig)
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			fmt.Println("[ " + utils.PrimaryColor("!") + " ] [ No configuration found in MongoDB. Generating a new one. ]")
-			Generate() // Calls a function that will create the default config and save it
-			// After generating, try loading again to ensure it's in memory
-			err = configCollection.FindOne(context.Background(), bson.M{"_id": ConfigDocumentID}).Decode(&loadedConfig)
+			Generate()
+			err = db.Collection.FindOne(context.Background(), bson.M{"_id": db.ConfigDocumentID}).Decode(&loadedConfig)
 			if err != nil {
 				panic(fmt.Errorf("failed to load generated config from MongoDB: %v", err))
 			}
@@ -283,10 +249,10 @@ func Load() {
 // Save persists the current configuration to MongoDB.
 func Save(cfg domains.Configuration) error {
 	// Add the unique identifier for the document
-	cfg.ID = ConfigDocumentID // Assuming your domains.Config struct has an `ID` field for `_id`
+	cfg.ID = db.ConfigDocumentID // Assuming your domains.Config struct has an `ID` field for `_id`
 
 	opts := options.Replace().SetUpsert(true) // Upsert: insert if not found, update if found
-	_, err := configCollection.ReplaceOne(context.Background(), bson.M{"_id": ConfigDocumentID}, cfg, opts)
+	_, err := db.Collection.ReplaceOne(context.Background(), bson.M{"_id": db.ConfigDocumentID}, cfg, opts)
 	if err != nil {
 		return fmt.Errorf("failed to save configuration to MongoDB: %v", err)
 	}
@@ -322,22 +288,4 @@ func VersionCheck() error {
 	}
 
 	return nil
-}
-
-// GetFingerprints is a helper function to fetch fingerprint data from a URL.
-// It remains unchanged as it fetches from a remote source.
-
-// AddDomain is a placeholder function. You would implement this to add a new domain
-// and save the updated configuration to MongoDB.
-
-// CloseMongoDBConnection should be called before your application exits to close the MongoDB connection.
-func CloseMongoDBConnection() {
-	if mongoClient != nil {
-		err := mongoClient.Disconnect(context.Background())
-		if err != nil {
-			fmt.Printf("Error closing MongoDB connection: %v\n", err)
-		} else {
-			fmt.Println("MongoDB connection closed.")
-		}
-	}
 }

@@ -2,8 +2,8 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/http/httputil"
 	"net/url"
@@ -17,8 +17,11 @@ import (
 	"github.com/inancgumus/screen"
 	"github.com/kor44/gofilter"
 	"github.com/shirou/gopsutil/cpu"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"golang.org/x/term"
 
+	"goProxy/core/db"
 	"goProxy/core/domains"
 	"goProxy/core/firewall"
 	"goProxy/core/pnc"
@@ -402,13 +405,18 @@ func ReloadConfig() {
 
 	domains.Domains = []string{}
 
-	file, err := os.Open("config.json")
+	// Load configuration from MongoDB instead of JSON file
+	var loadedConfig domains.Configuration
+	err := db.Collection.FindOne(context.Background(), bson.M{"_id": db.ConfigDocumentID}).Decode(&loadedConfig)
 	if err != nil {
-		panic(err)
+		if err == mongo.ErrNoDocuments {
+			panic("[ " + utils.PrimaryColor("!") + " ] [ No configuration found in MongoDB ]")
+		} else {
+			panic("[ " + utils.PrimaryColor("!") + " ] [ Failed to load configuration from MongoDB: " + err.Error() + " ]")
+		}
 	}
-	defer file.Close()
-	json.NewDecoder(file).Decode(&domains.Config)
 
+	domains.Config = &loadedConfig
 	proxy.Cloudflare = domains.Config.Proxy.Cloudflare
 
 	proxy.CookieSecret = domains.Config.Proxy.Secrets["cookie"]
