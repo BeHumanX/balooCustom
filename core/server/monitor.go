@@ -2,8 +2,8 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/http/httputil"
 	"net/url"
@@ -17,6 +17,8 @@ import (
 	"github.com/inancgumus/screen"
 	"github.com/kor44/gofilter"
 	"github.com/shirou/gopsutil/cpu"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"golang.org/x/term"
 
 	"goProxy/core/domains"
@@ -397,17 +399,28 @@ func commands() {
 	}
 }
 
+const (
+	MongoDBURI       = "mongodb://localhost:27017" // Change if your MongoDB is elsewhere
+	DatabaseName     = "goProxyConfig"
+	CollectionName   = "configurations"
+	ConfigDocumentID = "main_config" // A unique ID for your single config document
+)
+
+var (
+	mongoClient      *mongo.Client
+	configCollection *mongo.Collection
+)
+
 // This would ideally be in package config, however import cycles seem to not allow this.
 func ReloadConfig() {
-
+	configCollection = mongoClient.Database(DatabaseName).Collection(CollectionName)
+	// Connect to MongoDB
 	domains.Domains = []string{}
+	// Initialize the MongoDB client
+	var loadedConfig domains.Configuration
+	configCollection.FindOne(context.Background(), bson.M{"_id": ConfigDocumentID}).Decode(&loadedConfig)
 
-	file, err := os.Open("config.json")
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-	json.NewDecoder(file).Decode(&domains.Config)
+	domains.Config = &loadedConfig // Load the configuration from MongoDB
 
 	proxy.Cloudflare = domains.Config.Proxy.Cloudflare
 
