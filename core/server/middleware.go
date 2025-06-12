@@ -52,7 +52,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	var browser string
 	var botFp string
 
-	var fpCount int
+	// var fpCount int
 	var ipCount int
 	var ipCountCookie int
 
@@ -63,7 +63,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 		tlsFp = "Cloudflare"
 		browser = "Cloudflare"
 		botFp = ""
-		fpCount = 0
+		// fpCount = 0
 
 		firewall.Mutex.RLock()
 		ipCount = firewall.AccessIps[ip]
@@ -75,7 +75,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 		//Retrieve information about the client
 		firewall.Mutex.RLock()
 		tlsFp = firewall.Connections[request.RemoteAddr]
-		fpCount = firewall.UnkFps[tlsFp]
+		// fpCount = firewall.UnkFps[tlsFp]
 		ipCount = firewall.AccessIps[ip]
 		ipCountCookie = firewall.AccessIpsCookie[ip]
 		firewall.Mutex.RUnlock()
@@ -119,17 +119,17 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	//Ratelimit fingerprints that don't belong to major browsers
-	if browser == "" {
-		if fpCount > proxy.FPRatelimit {
-			writer.Header().Set("Content-Type", "text/plain")
-			SendResponse("Blocked by BalooProxy.\nYou have been ratelimited. (R3)", buffer, writer)
-			return
-		}
+	// if browser == "" {
+	// 	if fpCount > proxy.FPRatelimit {
+	// 		writer.Header().Set("Content-Type", "text/plain")
+	// 		SendResponse("Blocked by BalooProxy.\nYou have been ratelimited. (R3)", buffer, writer)
+	// 		return
+	// 	}
 
-		firewall.Mutex.Lock()
-		firewall.WindowUnkFps[proxy.Last10SecondTimestamp][tlsFp]++
-		firewall.Mutex.Unlock()
-	}
+	// 	firewall.Mutex.Lock()
+	// 	firewall.WindowUnkFps[proxy.Last10SecondTimestamp][tlsFp]++
+	// 	firewall.Mutex.Unlock()
+	// }
 
 	//Block user-specified fingerprints
 	forbiddenFp := firewall.ForbiddenFingerprints[tlsFp]
