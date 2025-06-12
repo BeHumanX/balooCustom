@@ -79,25 +79,6 @@ func Serve() {
 
 		http2.ConfigureServer(service, &http2.Server{})
 		http2.ConfigureServer(serviceH, &http2.Server{})
-		// service.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 	firewall.Mutex.RLock()
-		// 	domainData, domainFound := domains.DomainsData[r.Host]
-		// 	firewall.Mutex.RUnlock()
-
-		// 	if !domainFound {
-		// 		w.Header().Set("Content-Type", "text/plain")
-		// 		fmt.Fprintf(w, "L-FIREWALL: "+r.Host+" does not exist.")
-		// 		return
-		// 	}
-
-		// 	firewall.Mutex.Lock()
-		// 	domainData = domains.DomainsData[r.Host]
-		// 	domainData.TotalRequests++
-		// 	domains.DomainsData[r.Host] = domainData
-		// 	firewall.Mutex.Unlock()
-
-		// 	http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently)
-		// })
 
 		commonHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			firewall.Mutex.RLock()
@@ -184,8 +165,7 @@ func Serve() {
 		service.Handler = commonHandler
 		service.SetKeepAlivesEnabled(true)
 		serviceH.Handler = commonHandler
-		// service.SetKeepAlivesEnabled(true)
-		// serviceH.Handler = http.HandlerFunc(Middleware)
+
 		go func() {
 			defer pnc.PanicHndl()
 			if err := serviceH.ListenAndServeTLS("", ""); err != nil {

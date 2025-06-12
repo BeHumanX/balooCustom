@@ -52,7 +52,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	var browser string
 	var botFp string
 
-	// var fpCount int
+	var fpCount int
 	var ipCount int
 	var ipCountCookie int
 
@@ -63,7 +63,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 		tlsFp = "Cloudflare"
 		browser = "Cloudflare"
 		botFp = ""
-		// fpCount = 0
+		fpCount = 0
 
 		firewall.Mutex.RLock()
 		ipCount = firewall.AccessIps[ip]
@@ -75,7 +75,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 		//Retrieve information about the client
 		firewall.Mutex.RLock()
 		tlsFp = firewall.Connections[request.RemoteAddr]
-		// fpCount = firewall.UnkFps[tlsFp]
+		fpCount = firewall.UnkFps[tlsFp]
 		ipCount = firewall.AccessIps[ip]
 		ipCountCookie = firewall.AccessIpsCookie[ip]
 		firewall.Mutex.RUnlock()
@@ -119,17 +119,17 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	//Ratelimit fingerprints that don't belong to major browsers
-	// if browser == "" {
-	// 	if fpCount > proxy.FPRatelimit {
-	// 		writer.Header().Set("Content-Type", "text/plain")
-	// 		SendResponse("Blocked by BalooProxy.\nYou have been ratelimited. (R3)", buffer, writer)
-	// 		return
-	// 	}
+	if browser == "" {
+		if fpCount > proxy.FPRatelimit {
+			writer.Header().Set("Content-Type", "text/plain")
+			SendResponse("Blocked by BalooProxy.\nYou have been ratelimited. (R3)", buffer, writer)
+			return
+		}
 
-	// 	firewall.Mutex.Lock()
-	// 	firewall.WindowUnkFps[proxy.Last10SecondTimestamp][tlsFp]++
-	// 	firewall.Mutex.Unlock()
-	// }
+		firewall.Mutex.Lock()
+		firewall.WindowUnkFps[proxy.Last10SecondTimestamp][tlsFp]++
+		firewall.Mutex.Unlock()
+	}
 
 	//Block user-specified fingerprints
 	forbiddenFp := firewall.ForbiddenFingerprints[tlsFp]
@@ -229,7 +229,7 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 			publicSalt := encryptedIP[:len(encryptedIP)-domainData.Stage2Difficulty]
 			writer.Header().Set("Content-Type", "text/html")
 			writer.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0") // Prevent special(ed) browsers from caching the challenge
-			SendResponse(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>LimitlessTXT Anti-DDoS</title><script src="https://cdn.tailwindcss.com"></script><style>@keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}.box-animation{animation:slideUp 1s ease-in-out;}</style></head><body class="bg-white text-gray-800 flex items-center justify-center h-screen"><div class="text-center max-w-md mx-auto p-6 rounded-2xl shadow-lg border border-gray-200 box-animation"><h1 class="text-2xl font-semibold mb-2">Checking your browser before accessing</h1><p class="text-sm mb-4">This process is automatic. Your browser will redirect once the check is complete.</p><div class="text-left text-sm bg-gray-100 rounded-lg p-4 border border-gray-200 mb-6"><p><strong>Challenge:</strong></p><div class="placeholder-container mt-2"><div class="text-xs text-gray-500 mb-1">publicSalt:</div><code id="publicSalt" class="break-words text-gray-600 cursor-pointer" onclick="ctc('publicSalt')">`+publicSalt+`</code></div><div class="placeholder-container mt-3"><div class="text-xs text-gray-500 mb-1">challenge:</div><code id="challenge" class="break-words text-gray-600 cursor-pointer" onclick="ctc('challenge')">`+hashedEncryptedIP+`</code></div><p class="mt-2 text-xs text-gray-500" id="challengeStatus">Solving SHA-256 PoW challenge...</p></div><div class="w-full bg-gray-200 rounded-full h-3 mb-4"><div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-75 ease-in-out" style="width:0%"></div></div><p class="text-xs text-gray-500" id="statusText">Initializing...</p></div><script>function ctc(t){navigator.clipboard.writeText(document.getElementById(t).innerText);}</script><script src="https://cdn.jsdelivr.net/gh/41Baloo/balooPow@main/balooPow.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script><script>function solved(e){document.cookie="_2__LFIREWALL_v=`+publicSalt+`"+e.solution+"; SameSite=Lax; path=/; Secure";location.href=location.href;}let step=0;const totalSteps=30;const interval=setInterval(()=>{const percent=Math.floor((step/totalSteps)*100);document.getElementById("progressBar").style.width=percent+"%";document.getElementById("statusText").textContent="Solving challenge... "+percent+"%";step++;if(step>totalSteps){clearInterval(interval);}},30);new BalooPow("`+publicSalt+`",`+strconv.Itoa(domainData.Stage2Difficulty)+`,"`+hashedEncryptedIP+`",!1).Solve().then(e=>{clearInterval(interval);document.getElementById("progressBar").style.width="100%";document.getElementById("statusText").textContent="Challenge passed! Redirecting...";if(e.match==""){solved(e);}else{document.getElementById("statusText").textContent="Navigator Mismatch ("+e.match+"). Please contact support.";document.getElementById("statusText").classList.add("text-red-500");}});</script></body></html>`, buffer, writer)
+			SendResponse(`<!doctypehtml><html lang=en><meta charset=UTF-8><meta content="width=device-width,initial-scale=1"name=viewport><title>Completing challenge ...</title><style>body,html{height:100%;width:100%;margin:0;display:flex;flex-direction:column;justify-content:center;align-items:center;background-color:#f0f0f0;font-family:Arial,sans-serif}.loader{display:flex;justify-content:space-around;align-items:center;width:100px;height:100px}.loader div{width:20px;height:20px;background-color:#333;border-radius:50%;animation:bounce .6s infinite alternate}.loader div:nth-child(2){animation-delay:.2s}.loader div:nth-child(3){animation-delay:.4s}@keyframes bounce{to{transform:translateY(-30px)}}.message{text-align:center;margin-top:20px;color:#333}.subtext{text-align:center;color:#666;font-size:.9em;margin-top:5px}.placeholder-container{width:25%;text-align:center;margin:10px 0}.placeholder-label{font-weight:700;margin-bottom:5px}.placeholder{background-color:#e0e0e0;padding:10px;border-radius:5px;word-break:break-all;font-family:monospace;cursor:pointer;}</style><div class=loader><div></div><div></div><div></div></div><div class=message><p>Completing challenge ...<div class=subtext>The process is automatic and shouldn't take too long. Please be patient.</div></div><div class=placeholder-container><div class=placeholder-label>publicSalt:</div><div class=placeholder id=publicSalt onclick='ctc("publicSalt")'><span>`+publicSalt+`</span></div></div><div class=placeholder-container><div class=placeholder-label>challenge:</div><div class=placeholder id=challenge onclick='ctc("challenge")'><span>`+hashedEncryptedIP+`</span></div></div><script>function ctc(t){navigator.clipboard.writeText(document.getElementById(t).innerText)}</script><script src="https://cdn.jsdelivr.net/gh/41Baloo/balooPow@main/balooPow.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script><script>function solved(e){document.cookie="_2__bProxy_v=`+publicSalt+`"+e.solution+"; SameSite=Lax; path=/; Secure",location.href=location.href}new BalooPow("`+publicSalt+`",`+strconv.Itoa(domainData.Stage2Difficulty)+`,"`+hashedEncryptedIP+`",!1).Solve().then(e=>{if(e.match == ""){solved(e)}else alert("Navigator Missmatch ("+e.match+"). Please contact @ddosmitigation")});</script>`, buffer, writer)
 			return
 		case 3:
 			secretPart := encryptedIP[:6]
