@@ -103,26 +103,65 @@ func Serve() {
 			}
 			fmt.Fprintf(w, `
 <!DOCTYPE html>
-<html>
-<head>
-    <title>Redirecting...</title>
-    <meta http-equiv="refresh" content="1;url=%s">
-    <style>
-        body { font-family: Arial, sans-serif; background: #fafafa; color: #333; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        .box { background: #fff; padding: 30px 50px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="box">
-        <h2>Redirecting...</h2>
-        <p>If you are not redirected automatically, <a href="%s">click here</a>.</p>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>L-firewall TXT Anti-DDoS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-white text-gray-800 flex items-center justify-center h-screen">
+    <div class="text-center max-w-md mx-auto p-6 rounded-2xl shadow-lg border border-gray-200">
+      <h1 class="text-2xl font-semibold mb-2">Checking your browser before accessing</h1>
+      <p class="text-sm mb-4">This process is automatic. Your browser will redirect once the check is complete.</p>
+      <div class="text-left text-sm bg-gray-100 rounded-lg p-4 border border-gray-200 mb-6">
+        <p>
+          <strong>Challenge:</strong>
+        </p>
+        <code id="challenge" class="break-words text-gray-600">Initializing challenge...</code>
+        <p class="mt-2 text-xs text-gray-500" id="challengeStatus">Solving SHA-256 PoW challenge...</p>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-3 mb-4">
+        <div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-75 ease-in-out" style="width:0%%"></div>
+      </div>
+      <p class="text-xs text-gray-500" id="statusText">Initializing...</p>
     </div>
     <script>
-        setTimeout(function(){ window.location.href = "%s"; }, 1000);
+      function randomStr(length) {
+        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < length; i++) {
+          result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+      }
+      const challengeEl = document.getElementById("challenge");
+      const progressEl = document.getElementById("progressBar");
+      const statusEl = document.getElementById("statusText");
+      const initialChallengePrefix = "your_secret_server_prefix_";
+      const targetURL = "%s";
+      let step = 0;
+      const totalSteps = 30;
+      const interval = setInterval(() => {
+        const fakeToken = randomStr(11);
+        const dummyHash = "c0ffee00deadbeefc0ffee00deadbeefc0ffee00deadbeefc0ffee00deadbeef";
+        challengeEl.textContent = 'sha256("' + initialChallengePrefix + '" + "' + fakeToken + '") = ' + dummyHash.substring(0, 16) + '...';
+        const percent = Math.floor((step / totalSteps) * 100);
+        progressEl.style.width = percent + "%%";
+        statusEl.textContent = "Solving challenge... " + percent + "%%";
+        step++;
+        if (step > totalSteps) { 
+		clearInterval(interval);
+          progressEl.style.width = "100%%";
+          statusEl.textContent = "Challenge passed! Redirecting...";
+          setTimeout(() => {
+            window.location.href = targetURL;
+          }, 500);
+        }
+      }, 30);
     </script>
-</body>
+  </body>
 </html>
-`, redirectURL, redirectURL, redirectURL)
+`, redirectURL)
 			w.(http.Flusher).Flush()
 			r.URL.Scheme = "https"
 		})
