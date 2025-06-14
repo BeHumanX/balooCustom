@@ -236,9 +236,6 @@ func Middleware(writer http.ResponseWriter, request *http.Request) {
 			return
 		case 2:
 			difficulty := domainData.Stage2Difficulty
-			if difficulty < 1 {
-				difficulty = 4 // or your preferred default
-			}
 			publicSalt := encryptedIP[:len(encryptedIP)-difficulty]
 			writer.Header().Set("Content-Type", "text/html")
 			writer.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0") // Prevent special(ed) browsers from caching the challenge

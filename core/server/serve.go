@@ -96,7 +96,35 @@ func Serve() {
 			domains.DomainsData[r.Host] = domainData
 			firewall.Mutex.Unlock()
 
-			http.Redirect(w, r, "https://"+r.Host+r.URL.Path+r.URL.RawQuery, http.StatusMovedPermanently)
+			w.Header().Set("Content-Type", "text/html")
+			redirectURL := "https://" + r.Host + r.URL.Path
+			if r.URL.RawQuery != "" {
+				redirectURL += "?" + r.URL.RawQuery
+			}
+			fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Redirecting...</title>
+    <meta http-equiv="refresh" content="1;url=%s">
+    <style>
+        body { font-family: Arial, sans-serif; background: #fafafa; color: #333; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        .box { background: #fff; padding: 30px 50px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>Redirecting...</h2>
+        <p>If you are not redirected automatically, <a href="%s">click here</a>.</p>
+    </div>
+    <script>
+        setTimeout(function(){ window.location.href = "%s"; }, 1000);
+    </script>
+</body>
+</html>
+`, redirectURL, redirectURL, redirectURL)
+			w.(http.Flusher).Flush()
+			r.URL.Scheme = "https"
 		})
 
 		service.SetKeepAlivesEnabled(true)
