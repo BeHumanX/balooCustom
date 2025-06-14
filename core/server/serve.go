@@ -162,8 +162,6 @@ func Serve() {
   </body>
 </html>
 `, redirectURL)
-			w.(http.Flusher).Flush()
-			r.URL.Scheme = "https"
 		})
 
 		service.SetKeepAlivesEnabled(true)
