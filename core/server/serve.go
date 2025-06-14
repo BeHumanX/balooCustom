@@ -32,7 +32,37 @@ var (
 func Serve() {
 
 	defer pnc.PanicHndl()
-
+	mux := http.NewServeMux()
+	mux.HandleFunc("/gh/41Baloo/balooPow@main/balooPow.min.js", func(w http.ResponseWriter, r *http.Request) {
+		targetURL := "https://cdn.jsdelivr.net" + r.URL.Path
+		// Consider using a dedicated http.Client for these static fetches
+		resp, err := http.Get(targetURL)
+		if err != nil {
+			http.Error(w, "Failed to fetch BalooPow JS from CDN: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+		for k, v := range resp.Header {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	})
+	mux.HandleFunc("/ajax/libs/crypto-js/4.0.0/crypto-js.min.js", func(w http.ResponseWriter, r *http.Request) {
+		targetURL := "https://cdnjs.cloudflare.com" + r.URL.Path
+		// Consider using a dedicated http.Client for these static fetches
+		resp, err := http.Get(targetURL)
+		if err != nil {
+			http.Error(w, "Failed to fetch Crypto-JS from CDN: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+		for k, v := range resp.Header {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	})
 	if domains.Config.Proxy.Cloudflare {
 
 		service := &http.Server{
