@@ -269,7 +269,9 @@ func printStats() {
 		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("clrlogs") + " ]: " + utils.PrimaryColor("Usage: ") + "clrlogs " + utils.PrimaryColor("Clears all logs for the current domain"))
 		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("reload") + " ]: " + utils.PrimaryColor("Usage: ") + "reload " + utils.PrimaryColor("Reload your proxy in order for changes in your ") + "config.json " + utils.PrimaryColor("to take effect"))
 	} else {
-
+		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("BufferCooldown") + " ] > [ " + utils.PrimaryColor(fmt.Sprint(domainData.BufferCooldown)) + " ]")
+		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("BypassAttack") + " ] > [ " + utils.PrimaryColor(fmt.Sprint(domainData.BypassAttack)) + " ]")
+		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("RawAttack") + " ] > [ " + utils.PrimaryColor(fmt.Sprint(domainData.RawAttack)) + " ]")
 		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("Domain") + " ] > [ " + utils.PrimaryColor(proxy.WatchedDomain) + " ]")
 		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("Stage") + " ] > [ " + utils.PrimaryColor(fmt.Sprint(domainData.Stage)) + " ]")
 		fmt.Println("[" + utils.PrimaryColor("+") + "] [ " + utils.PrimaryColor("Stage Locked") + " ] > [ " + utils.PrimaryColor(fmt.Sprint(domainData.StageManuallySet)) + " ]")
